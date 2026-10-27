@@ -366,30 +366,8 @@ fun TodayScreen(
             }
         }
     }
-}
 
-@Composable
-private fun HeroStat(
-    modifier: Modifier,
-    value: String,
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
-) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White.copy(alpha = 0.15f))
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(icon, null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(18.dp))
-        Spacer(Modifier.height(6.dp))
-        Text(value, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(label, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelSmall)
-    }
-}
-
-
+    // 👇 این بلاک AlertDialog به داخل تابع TodayScreen منتقل شد 👇
     if (showMsgPreview) {
         AlertDialog(
             onDismissRequest = { showMsgPreview = false },
@@ -427,6 +405,29 @@ private fun HeroStat(
             }
         )
     }
+    // 👆 ---------------------------------------- 👆
+}
+
+@Composable
+private fun HeroStat(
+    modifier: Modifier,
+    value: String,
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.15f))
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, null, tint = Color.White.copy(alpha = 0.9f), modifier = Modifier.size(18.dp))
+        Spacer(Modifier.height(6.dp))
+        Text(value, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(label, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelSmall)
+    }
+}
 
 @Composable
 private fun TodaySessionCard(
