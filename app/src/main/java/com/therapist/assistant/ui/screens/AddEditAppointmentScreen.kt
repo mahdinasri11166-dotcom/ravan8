@@ -1,17 +1,15 @@
 package com.therapist.assistant.ui.screens
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight // 👈 این خط اضافه شد
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.therapist.assistant.data.AppointmentStatus
@@ -58,12 +56,10 @@ fun AddEditAppointmentScreen(
     val apptsAll by viewModel.allAppointments.collectAsState()
     val isNew = appointmentId == null || appointmentId <= 0L
     var showTimePicker by remember { mutableStateOf(false) }
-    var expandedClient by remember { mutableStateOf(false) }
     val isEdit = appointmentId != null
     val defaultFee by viewModel.defaultSessionFee.collectAsState()
     val therapistName = viewModel.currentTherapistName()
 
-    // تاریخ/ساعت از ساعت گوشی؛ هزینه از تعرفه پیش‌فرض
     LaunchedEffect(Unit) {
         if (appointmentId == null) {
             val cal = java.util.Calendar.getInstance()
@@ -109,9 +105,6 @@ fun AddEditAppointmentScreen(
             }
         }
     }
-
-    val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale("fa")) // picker internal
-    val timeFormat = SimpleDateFormat("HH:mm", Locale("fa"))
 
     fun buildMillis(): Long {
         val cal = Calendar.getInstance().apply {
@@ -182,10 +175,16 @@ fun AddEditAppointmentScreen(
                 modifier = Modifier.fillMaxWidth(),
                 trailingIcon = {
                     TextButton(onClick = { showDatePicker = true }) { Text("انتخاب") }
+                }
+            )
 
-                    val freeSlots = remember(apptsAll) { viewModel.suggestFreeSlots(6) }
-                    if (freeSlots.isNotEmpty() && isNew) {
-                        Text("پیشنهاد زمان خالی", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            // 👇 بلاک پیشنهاد زمان خالی به بیرون از trailingIcon منتقل شد 👇
+            if (isNew) {
+                val freeSlots = remember(apptsAll) { viewModel.suggestFreeSlots(6) }
+                if (freeSlots.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("پیشنهاد زمان خالی", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         freeSlots.forEach { slot ->
                             AssistChip(
                                 onClick = {
@@ -198,9 +197,10 @@ fun AddEditAppointmentScreen(
                             )
                         }
                     }
-
                 }
-            )
+            }
+            // 👆 -------------------------------------------------- 👆
+
             Spacer(Modifier.height(12.dp))
             val tCal = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, selectedHour)
@@ -376,41 +376,40 @@ fun AddEditAppointmentScreen(
                     maxLines = 5
                 )
             } else {
-                
-            Text("قالب یادداشت سریع", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(
-                    "جلسه اول" to "ارزیابی اولیه و تعیین اهداف درمان",
-                    "پیگیری" to "مرور تکلیف و بررسی پیشرفت از جلسه قبل",
-                    "لغو با پیام" to "مراجع اطلاع داد؛ نوبت لغو/جابجا شد"
-                ).forEach { (label, body) ->
-                    AssistChip(
-                        onClick = {
-                            sessionNotes = if (sessionNotes.isBlank()) body else sessionNotes.trim() + "\n" + body
-                            if (notes.isBlank()) notes = label
-                        },
-                        label = { Text(label) }
-                    )
+                Text("قالب یادداشت سریع", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(
+                        "جلسه اول" to "ارزیابی اولیه و تعیین اهداف درمان",
+                        "پیگیری" to "مرور تکلیف و بررسی پیشرفت از جلسه قبل",
+                        "لغو با پیام" to "مراجع اطلاع داد؛ نوبت لغو/جابجا شد"
+                    ).forEach { (label, body) ->
+                        AssistChip(
+                            onClick = {
+                                sessionNotes = if (sessionNotes.isBlank()) body else sessionNotes.trim() + "\n" + body
+                                if (notes.isBlank()) notes = label
+                            },
+                            label = { Text(label) }
+                        )
+                    }
                 }
-            }
-            Spacer(Modifier.height(8.dp))
-            Text("تگ سریع", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("اضطراب", "افسردگی", "خواب", "زوج", "تکلیف", "CBT", "BA").forEach { tag ->
-                    val selected = noteTags.split(",").map { it.trim() }.contains(tag)
-                    FilterChip(
-                        selected = selected,
-                        onClick = {
-                            val parts = noteTags.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
-                            if (selected) parts.remove(tag) else parts.add(tag)
-                            noteTags = parts.joinToString(",")
-                        },
-                        label = { Text(tag) }
-                    )
+                Spacer(Modifier.height(8.dp))
+                Text("تگ سریع", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("اضطراب", "افسردگی", "خواب", "زوج", "تکلیف", "CBT", "BA").forEach { tag ->
+                        val selected = noteTags.split(",").map { it.trim() }.contains(tag)
+                        FilterChip(
+                            selected = selected,
+                            onClick = {
+                                val parts = noteTags.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+                                if (selected) parts.remove(tag) else parts.add(tag)
+                                noteTags = parts.joinToString(",")
+                            },
+                            label = { Text(tag) }
+                        )
+                    }
                 }
-            }
-            Spacer(Modifier.height(12.dp))
-OutlinedTextField(
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
                     value = sessionNotes,
                     onValueChange = { sessionNotes = it },
                     label = { Text("یادداشت آزاد جلسه") },
