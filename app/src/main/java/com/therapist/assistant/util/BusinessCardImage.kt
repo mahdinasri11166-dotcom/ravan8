@@ -72,7 +72,7 @@ object BusinessCardImage {
         // Decorative circle
         val deco = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0x33FFFFFF
-            style = Paint.Style.FILL
+            style = android.graphics.Paint.Style.FILL // 👈 اصلاح شد
         }
         c.drawCircle(width * 0.92f, dp(20f), dp(90f), deco)
         c.drawCircle(width * 0.05f, headerH + dp(10f), dp(50f), deco)
@@ -85,7 +85,7 @@ object BusinessCardImage {
         c.drawCircle(avCx, avCy, avR, avBg)
         val avStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0xAAFFFFFF.toInt()
-            style = Paint.Style.STROKE
+            style = android.graphics.Paint.Style.STROKE // 👈 اصلاح شد
             strokeWidth = dp(2.5f)
         }
         c.drawCircle(avCx, avCy, avR, avStroke)
