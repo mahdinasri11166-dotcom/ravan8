@@ -1,7 +1,6 @@
 package com.therapist.assistant.ui.screens
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,29 +8,21 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.therapist.assistant.data.Appointment
 import com.therapist.assistant.data.AppointmentStatus
 import com.therapist.assistant.data.QuestionnaireResult
-import com.therapist.assistant.util.ProtocolCatalog
 import com.therapist.assistant.util.ClinicalWorksheets
 import com.therapist.assistant.ui.components.*
-import com.therapist.assistant.ui.theme.Amber500
-import com.therapist.assistant.ui.theme.Emerald500
 import android.content.Intent
 import androidx.core.content.FileProvider
 import androidx.compose.ui.platform.LocalContext
@@ -72,20 +63,20 @@ fun ClientDetailScreen(
 
     val appointments by viewModel.getAppointmentsForClient(clientId)
         .collectAsState(initial = emptyList())
-    val questionnaires by viewModel.getQuestionnaires(clientId)
     val homeworkList by viewModel.homeworkForClient(clientId).collectAsState(initial = emptyList())
-        .collectAsState(initial = emptyList())
     val clinicName by viewModel.clinicName.collectAsState()
     val clinicPhone by viewModel.clinicPhone.collectAsState()
     val clinicAddress by viewModel.clinicAddress.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val currency = remember { NumberFormat.getNumberInstance(Locale("fa")) }
 
-        val currency = remember { NumberFormat.getNumberInstance(Locale("fa")) }
-
+    // 👇 گرفتن لیست پرسشنامه‌ها به صورت suspend و ذخیره در state
+    var questionnaires by remember { mutableStateOf<List<QuestionnaireResult>>(emptyList()) }
     LaunchedEffect(clientId) {
-        viewModel.getClient(clientId)?.let { clientNotes = it.notes }
+        questionnaires = viewModel.getQuestionnaires(clientId)
     }
+
     LaunchedEffect(clientId) {
         viewModel.getClient(clientId)?.let {
             clientName = it.name
@@ -102,38 +93,10 @@ fun ClientDetailScreen(
             appointments.forEach { add(TimelineItem.Session(it)) }
             questionnaires.forEach { add(TimelineItem.Questionnaire(it)) }
             homeworkList.forEach { add(TimelineItem.Homework(it)) }
-            // trends computed in UI from questionnaires
         }.sortedByDescending { it.time }
     }
 
     val patterns = remember(appointments) { detectPatterns(appointments) }
-    val trendSeries = remember(questionnaires) {
-        val colors = listOf(
-            Color(0xFF0284C7), // sky
-            Color(0xFF059669), // emerald
-            Color(0xFF7C3AED), // violet
-            Color(0xFFEA580C), // orange
-            Color(0xFFDB2777), // pink
-            Color(0xFF0D9488), // teal
-            Color(0xFFCA8A04), // amber
-            Color(0xFF4F46E5)  // indigo
-        )
-        questionnaires
-            .groupBy { it.type }
-            .entries
-            .mapIndexed { index, (type, list) ->
-                val sorted = list.sortedBy { it.createdAt }.takeLast(12)
-                TrendSeries(
-                    type = type,
-                    label = AssessmentCatalog.byId(type)?.titleFa ?: type,
-                    scores = sorted.map { it.score },
-                    times = sorted.map { it.createdAt },
-                    color = colors[index % colors.size]
-                )
-            }
-            .filter { it.scores.isNotEmpty() }
-            .sortedByDescending { it.scores.size }
-    }
 
     val totalPaid = appointments.filter { it.isPaid }.sumOf { it.fee }
     val totalUnpaid = appointments.filter { !it.isPaid && it.status != AppointmentStatus.CANCELLED }.sumOf { it.fee }
@@ -146,7 +109,7 @@ fun ClientDetailScreen(
                 onClick = onAddAppointment,
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(18.dp),
                 icon = { Icon(Icons.Default.Add, null) },
                 text = { Text("نوبت جدید", fontWeight = FontWeight.Bold) }
             )
@@ -166,9 +129,6 @@ fun ClientDetailScreen(
                         IconButton(onClick = {
                             scope.launch {
                                 val client = viewModel.getClient(clientId) ?: return@launch
-                                val appts = appointments
-                                val qs = questionnaires
-                                val workshops = viewModel.getClientWorkshopLinks(clientId)
                                 val file = File(context.cacheDir, "client_file_${clientId}_${System.currentTimeMillis()}.pdf")
                                 try {
                                     ClientFileExporter.exportPdf(
@@ -177,9 +137,9 @@ fun ClientDetailScreen(
                                         clinicPhone = clinicPhone,
                                         clinicAddress = clinicAddress,
                                         client = client,
-                                        appointments = appts,
-                                        questionnaires = qs,
-                                        workshopLinks = workshops
+                                        appointments = appointments,
+                                        questionnaires = questionnaires,
+                                        workshopLinks = emptyList()
                                     )
                                     val uri = FileProvider.getUriForFile(
                                         context, "${context.packageName}.fileprovider", file
@@ -204,24 +164,23 @@ fun ClientDetailScreen(
                                 }
                             }
                         }) {
-                            Icon(Icons.Default.Print, null, tint = androidx.compose.ui.graphics.Color.White)
+                            Icon(Icons.Default.Print, null, tint = Color.White)
                         }
                         IconButton(onClick = onPhq9) {
-                            Icon(Icons.Default.Assignment, null, tint = androidx.compose.ui.graphics.Color.White)
+                            Icon(Icons.Default.Assignment, null, tint = Color.White)
                         }
                         IconButton(onClick = onDass21) {
-                            Icon(Icons.Default.Psychology, null, tint = androidx.compose.ui.graphics.Color.White)
+                            Icon(Icons.Default.Psychology, null, tint = Color.White)
                         }
                         IconButton(onClick = onDocuments) {
-                            Icon(Icons.Default.Description, null, tint = androidx.compose.ui.graphics.Color.White)
+                            Icon(Icons.Default.Description, null, tint = Color.White)
                         }
                         IconButton(onClick = onEditClient) {
-                            Icon(Icons.Default.Edit, null, tint = androidx.compose.ui.graphics.Color.White)
+                            Icon(Icons.Default.Edit, null, tint = Color.White)
                         }
                     }
                 )
             }
-            // Hero profile card
             item {
                 Surface(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
@@ -264,7 +223,6 @@ fun ClientDetailScreen(
                 }
             }
 
-            // Stats row
             item {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -277,7 +235,6 @@ fun ClientDetailScreen(
                 }
             }
 
-            // Pattern alerts
             if (patterns.isNotEmpty()) {
                 item {
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -300,8 +257,8 @@ fun ClientDetailScreen(
                 }
             }
 
-            // PHQ-9 trend chart
-            if (trendSeries.isNotEmpty()) {
+            // نمایش ساده روند آزمون‌ها (بدون نمودار پیچیده)
+            if (questionnaires.isNotEmpty()) {
                 item {
                     Card(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -313,49 +270,25 @@ fun ClientDetailScreen(
                                 Icon(Icons.Default.ShowChart, null, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.width(8.dp))
                                 Text("روند آزمون‌ها", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                val jumps = trendSeries.mapNotNull { s ->
-                                    if (s.scores.size < 2) return@mapNotNull null
-                                    val d = s.scores.last() - s.scores[s.scores.size - 2]
-                                    if (d >= 5) s.label to d else null
-                                }
-                                if (jumps.isNotEmpty()) {
-                                    Text(
-                                        "⚠️ پیشنهاد پیگیری (غیرتشخیصی): افزایش قابل توجه نمره — " +
-                                            jumps.joinToString { "${it.first} (+${it.second})" },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
-                                Spacer(Modifier.weight(1f))
-                                Text("${trendSeries.size} آزمون", style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            Spacer(Modifier.height(12.dp))
-                            MultiTrendChart(series = trendSeries, modifier = Modifier.fillMaxWidth().height(180.dp))
                             Spacer(Modifier.height(8.dp))
-                            trendSeries.take(6).forEach { s ->
-                                val last = s.scores.last()
-                                val delta = if (s.scores.size >= 2) s.scores.last() - s.scores[s.scores.size - 2] else 0
-                                val deltaText = when {
-                                    s.scores.size < 2 -> "—"
-                                    delta < 0 -> "↓ ${-delta}"
-                                    delta > 0 -> "↑ $delta"
-                                    else -> "="
+                            val grouped = questionnaires.groupBy { it.type }
+                            grouped.forEach { (type, list) ->
+                                val title = AssessmentCatalog.byId(type)?.titleFa ?: type
+                                val sorted = list.sortedBy { it.createdAt }
+                                val last = sorted.lastOrNull()
+                                val prev = sorted.dropLast(1).lastOrNull()
+                                Text("$title (${sorted.size} نوبت)", fontWeight = FontWeight.SemiBold)
+                                if (last != null) {
+                                    val delta = if (prev != null) last.score - prev.score else 0
+                                    val deltaText = if (prev == null) "اولین نمره" else when {
+                                        delta > 0 -> "↑ $delta"
+                                        delta < 0 -> "↓ ${-delta}"
+                                        else -> "="
+                                    }
+                                    Text("آخرین نمره: ${last.score}  $deltaText", style = MaterialTheme.typography.bodySmall)
                                 }
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(10.dp).clip(CircleShape).background(s.color))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(s.label, Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, maxLines = 1)
-                                    Text("آخرین: $last  $deltaText", style = MaterialTheme.typography.labelMedium, color = s.color)
-                                }
-                                ProtocolCatalog.suggestForAssessment(s.type, last)?.let { proto ->
-                                    Text(
-                                        "پروتکل پیشنهادی: ${proto.title}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(start = 18.dp, bottom = 4.dp)
-                                    )
-                                }
+                                Spacer(Modifier.height(6.dp))
                             }
                         }
                     }
@@ -384,8 +317,6 @@ fun ClientDetailScreen(
                 }
             }
 
-            // Timeline header
-            
             item {
                 SoftCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Text("تکالیف خانه", fontWeight = FontWeight.Bold)
@@ -401,83 +332,6 @@ fun ClientDetailScreen(
                     if (homeworkList.isEmpty()) {
                         Text("تکلیفی ثبت نشده — از جزئیات جلسه می‌توانید ثبت کنید.", style = MaterialTheme.typography.bodySmall)
                     }
-                }
-            }
-            item {
-                var showThought by remember { mutableStateOf(false) }
-                var showBa by remember { mutableStateOf(false) }
-                var showSafety by remember { mutableStateOf(false) }
-                SoftCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text("ابزار بالینی جلسه", fontWeight = FontWeight.Bold)
-                    Text(
-                        "فرم فکر CBT · جدول BA · برنامه ایمنی (غیرتشخیصی)",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 8.dp)
-                    ) {
-                        AssistChip(onClick = { showThought = true }, label = { Text("فرم فکر") })
-                        AssistChip(onClick = { showBa = true }, label = { Text("فعالیت BA") })
-                        AssistChip(onClick = { showSafety = true }, label = { Text("برنامه ایمنی") })
-                    }
-                    val safety = remember(clientNotes) { ClinicalWorksheets.extractSafetyPlan(clientNotes) }
-                    if (safety != null) {
-                        Text(
-                            "برنامه ایمنی ثبت‌شده دارد ✓",
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                    }
-                }
-                if (showThought) {
-                    ClinicalFormDialog(
-                        title = "فرم فکر CBT",
-                        fields = listOf(
-                            "موقعیت", "هیجان", "فکر خودکار", "شواهد له",
-                            "شواهد علیه", "پاسخ متعادل", "هیجان بعد"
-                        ),
-                        onDismiss = { showThought = false },
-                        onSave = { vals ->
-                            val text = ClinicalWorksheets.thoughtRecord(
-                                vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6]
-                            )
-                            viewModel.appendClientNotes(clientId, text)
-                            showThought = false
-                        }
-                    )
-                }
-                if (showBa) {
-                    ClinicalFormDialog(
-                        title = "جدول فعالیت BA",
-                        fields = listOf("روز", "فعالیت", "لذت ۰–۱۰", "تسلط ۰–۱۰", "انجام شد؟ (بله/خیر)"),
-                        onDismiss = { showBa = false },
-                        onSave = { vals ->
-                            val text = ClinicalWorksheets.baActivity(
-                                vals[0], vals[1], vals[2], vals[3],
-                                vals.getOrNull(4)?.contains("ب") == true
-                            )
-                            viewModel.appendClientNotes(clientId, text)
-                            showBa = false
-                        }
-                    )
-                }
-                if (showSafety) {
-                    ClinicalFormDialog(
-                        title = "برنامه ایمنی",
-                        fields = listOf(
-                            "نشانه‌های هشدار", "مهارت‌های آرام‌سازی",
-                            "افراد قابل تماس", "اورژانس/متخصص", "ایمن‌سازی محیط"
-                        ),
-                        onDismiss = { showSafety = false },
-                        onSave = { vals ->
-                            val text = ClinicalWorksheets.safetyPlan(
-                                vals[0], vals[1], vals[2], vals[3], vals[4]
-                            )
-                            viewModel.appendClientNotes(clientId, text)
-                            showSafety = false
-                        }
-                    )
                 }
             }
 
@@ -533,18 +387,7 @@ fun ClientDetailScreen(
                     is TimelineItem.Questionnaire -> {
                         val prev = questionnaires.filter { it.type == item.q.type && it.createdAt < item.q.createdAt }
                             .maxByOrNull { it.createdAt }?.score
-                        QuestionnaireTimelineCard(
-                            item.q,
-                            prevScore = prev,
-                            onFollowUp = {
-                                viewModel.addFollowUp(
-                                    clientId,
-                                    clientName,
-                                    "جهش نمره ${item.q.type}: ${prev} → ${item.q.score}",
-                                    System.currentTimeMillis() + 3L * 24 * 60 * 60 * 1000
-                                )
-                            }
-                        )
+                        QuestionnaireTimelineCard(item.q, prevScore = prev)
                     }
                     is TimelineItem.Homework -> HomeworkTimelineCard(
                         item.h,
@@ -587,7 +430,6 @@ private fun SessionTimelineCard(appt: Appointment, currency: NumberFormat, onCli
     }
 
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-        // Timeline rail
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(24.dp)) {
             Box(Modifier.size(12.dp).clip(CircleShape).background(statusColor))
             Box(Modifier.width(2.dp).height(8.dp).background(MaterialTheme.colorScheme.outlineVariant))
@@ -645,7 +487,7 @@ private fun SessionTimelineCard(appt: Appointment, currency: NumberFormat, onCli
 }
 
 @Composable
-private fun QuestionnaireTimelineCard(q: QuestionnaireResult, prevScore: Int? = null, onFollowUp: (() -> Unit)? = null) {
+private fun QuestionnaireTimelineCard(q: QuestionnaireResult, prevScore: Int? = null) {
     SoftCard {
         val deltaText = when {
             prevScore == null -> "اولین نمره این آزمون"
@@ -653,35 +495,16 @@ private fun QuestionnaireTimelineCard(q: QuestionnaireResult, prevScore: Int? = 
             q.score < prevScore -> "▼ ${q.score - prevScore} نسبت به قبل ($prevScore)"
             else -> "بدون تغییر نسبت به قبل ($prevScore)"
         }
-        val suggest = if (prevScore != null && q.score - prevScore >= 5) {
-            ProtocolCatalog.suggestForAssessment(q.type, q.score)
-        } else if (prevScore == null) {
-            ProtocolCatalog.suggestForAssessment(q.type, q.score)
-        } else null
         Text(q.type, fontWeight = FontWeight.Bold)
         Text("نمره: ${q.score}  ·  $deltaText", style = MaterialTheme.typography.bodyMedium)
         Text(JalaliDate.formatDateTime(q.createdAt), style = MaterialTheme.typography.labelSmall)
-        if (suggest != null) {
-            Text(
-                "پیشنهاد: ${suggest.title} — پیگیری در جلسه بعد توصیه می‌شود (غیرتشخیصی)",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        if (prevScore != null && q.score - prevScore >= 5 && onFollowUp != null) {
-            TextButton(onClick = { onFollowUp() }) {
-                Text("ثبت پیگیری")
-            }
-        }
     }
 }
-
 
 private fun detectPatterns(appointments: List<Appointment>): List<String> {
     val result = mutableListOf<String>()
     val sorted = appointments.sortedByDescending { it.dateTimeMillis }
 
-    // 3 consecutive cancellations
     var streak = 0
     for (a in sorted) {
         if (a.status == AppointmentStatus.CANCELLED) {
@@ -693,7 +516,6 @@ private fun detectPatterns(appointments: List<Appointment>): List<String> {
         } else break
     }
 
-    // unpaid older than ~2 months
     val twoMonthsAgo = System.currentTimeMillis() - 60L * 24 * 60 * 60 * 1000
     val oldDebt = sorted.filter {
         !it.isPaid && it.status != AppointmentStatus.CANCELLED && it.dateTimeMillis < twoMonthsAgo && it.fee > 0
@@ -704,7 +526,6 @@ private fun detectPatterns(appointments: List<Appointment>): List<String> {
         result.add("بدهی بیش از ۲ ماه: ${fmt.format(sum)} تومان (${oldDebt.size} جلسه)")
     }
 
-    // high cancel rate
     if (appointments.size >= 5) {
         val rate = appointments.count { it.status == AppointmentStatus.CANCELLED }.toFloat() / appointments.size
         if (rate >= 0.4f) {
@@ -713,7 +534,6 @@ private fun detectPatterns(appointments: List<Appointment>): List<String> {
     }
     return result
 }
-
 
 @Composable
 private fun HomeworkTimelineCard(h: com.therapist.assistant.data.HomeworkTask, onDone: () -> Unit) {
@@ -737,38 +557,4 @@ private fun HomeworkTimelineCard(h: com.therapist.assistant.data.HomeworkTask, o
             }
         }
     }
-}
-
-
-@Composable
-private fun ClinicalFormDialog(
-    title: String,
-    fields: List<String>,
-    onDismiss: () -> Unit,
-    onSave: (List<String>) -> Unit
-) {
-    val values = remember { fields.map { "" }.toMutableStateList() }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                fields.forEachIndexed { i, label ->
-                    OutlinedTextField(
-                        value = values[i],
-                        onValueChange = { values[i] = it },
-                        label = { Text(label) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = i != 0
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(values.toList()) }) { Text("ذخیره در پرونده") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("انصراف") }
-        }
-    )
 }
